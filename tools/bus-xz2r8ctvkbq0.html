@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<title>通学バス</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232b7a4b'/%3E%3Ctext x='90' y='122' font-size='95' text-anchor='middle' fill='white'%3E%F0%9F%9A%8C%3C/text%3E%3C/svg%3E">
+<!--
+  通学バス検索ツール（桂駅西口 ⇄ 桂御陵坂）
+
+  回数券が使える京阪京都交通の便だけを表示する。京都市バスの便は出さない。
+
+  時刻表データ：2026年5月11日改正
+    桂駅西口 https://www.keihankyotokotsu.jp/bustimetable/timetable.php?stop_cd=1036&no=1
+    桂御陵坂 https://www.keihankyotokotsu.jp/bustimetable/timetable.php?stop_cd=1065&no=1
+    → ダイヤ改正のときは、下の TIMETABLE を書き換える。
+
+  所要時間データ：公式の通過時刻表PDF https://www.keihankyotokotsu.jp/pdf/timetable.pdf
+    → 系統20と20Bで差はなく、時間帯によって変わる。下の RIDE_TIME を書き換える。
+-->
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+    max-width: 480px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+    line-height: 1.6;
+    color: #222;
+  }
+  h1 {
+    font-size: 1.3rem;
+    margin-bottom: 0.2rem;
+  }
+  .subtitle {
+    color: #666;
+    font-size: 0.85rem;
+    margin-top: 0;
+  }
+  .buttons {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+  }
+  .buttons button {
+    flex: 1;
+    font-size: 1.05rem;
+    padding: 1rem 0.5rem;
+    border: 2px solid #ccc;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    line-height: 1.3;
+  }
+  .buttons button.active {
+    border-color: #2b7a4b;
+    background: #eaf5ee;
+    font-weight: bold;
+  }
+  .route {
+    margin-top: 1.5rem;
+    color: #666;
+    font-size: 0.9rem;
+  }
+  .rush {
+    margin-top: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: #fff7e6;
+    border: 1px dashed #d9a441;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    color: #7a5a1a;
+  }
+  .rush-label {
+    font-weight: bold;
+    margin-right: 0.2rem;
+  }
+  .rush-note {
+    display: block;
+    font-size: 0.8rem;
+    color: #9a7c45;
+  }
+  .primary {
+    margin-top: 0.5rem;
+    padding: 1.25rem 1rem;
+    background: #eaf5ee;
+    border-radius: 10px;
+  }
+  .leave {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #2b7a4b;
+    line-height: 1.2;
+  }
+  .leave .unit {
+    font-size: 1.1rem;
+    font-weight: normal;
+  }
+  .detail {
+    margin-top: 0.4rem;
+    font-size: 1.05rem;
+  }
+  .kei {
+    color: #666;
+    font-size: 0.85rem;
+  }
+  .others {
+    margin-top: 0.75rem;
+    padding: 0 1rem;
+  }
+  .others div {
+    color: #555;
+    font-size: 0.95rem;
+    padding: 0.35rem 0;
+    border-top: 1px solid #e5e5e5;
+  }
+  .empty {
+    margin-top: 0.5rem;
+    padding: 1.25rem 1rem;
+    background: #f4f4f4;
+    border-radius: 10px;
+    color: #555;
+  }
+  footer {
+    margin-top: 2rem;
+    color: #888;
+    font-size: 0.8rem;
+    border-top: 1px solid #e5e5e5;
+    padding-top: 0.75rem;
+  }
+  footer a { color: #888; }
+</style>
+</head>
+<body>
+
+<h1>通学バス</h1>
+<p class="subtitle">京阪京都交通（回数券が使える便だけ）</p>
+
+<div class="buttons">
+  <button id="btn-home" onclick="show('home')">🏠 家から<br>大学へ</button>
+  <button id="btn-lab" onclick="show('lab')">🏫 研究室から<br>家へ</button>
+</div>
+
+<div id="result"></div>
+
+<footer>
+  時刻表は2026年5月11日改正。ダイヤ改正があったら書き換えが必要です。<br>
+  京都市バス（西6号系統）も同じ区間を走りますが、回数券が使えないのでここには出していません。
+</footer>
+
+<script>
+// ---------------------------------------------------------------
+// 時刻表データ　"時:分,分,分" の形で書く
+// ---------------------------------------------------------------
+
+// 桂駅西口 発（家 → 大学）
+const TIMETABLE = {
+  home: {
+    weekday: {
+      "20B": "8:31,39 9:31,41 10:2,12,32,42 11:2,12,32,42 12:2,12,32,42 13:2,12,32,42 " +
+             "14:2,12,32,42 15:2,12,32,42 16:2,12,32,42 17:1,11,30,39,59 18:20,29 19:0,20,30 20:1",
+      "20":  "6:42 7:16,27,55 8:4,13,57 9:10 18:9,40 19:9,40 20:10,20,39 21:10,29 22:23"
+    },
+    holiday: {
+      "20B": "7:14,27 8:4,41,52 9:2 10:2 11:2 12:2 13:2 14:2 15:2 16:2 " +
+             "17:39 18:9,30 19:30 20:31 21:9",
+      "20":  "9:42 10:42 11:42 12:42 13:42 14:42 15:42 16:42 17:9 19:10 20:10 21:36 22:14"
+    }
+  },
+  // 桂御陵坂 発（大学 → 家）。公式表では20と20Bが同じ行にまとまっている。
+  lab: {
+    weekday: {
+      "20・20B": "5:50 6:15,27,58 7:9,35,44,52 8:11,21,39,52 " +
+                 "9:14,24,44,54 10:14,24,44,54 11:14,24,44,54 12:14,24,44,54 " +
+                 "13:14,24,44,54 14:14,24,44,54 15:14,24,44,54 16:14,24,44,54 " +
+                 "17:11,20,40,50 18:0,9,21,41,50 19:1,11,22,45,54 20:4,23,54 21:13 22:8"
+    },
+    holiday: {
+      "20・20B": "6:29,58 7:11,48 8:24,34,54 " +
+                 "9:14,54 10:14,54 11:14,54 12:14,54 13:14,54 14:14,54 15:14,54 " +
+                 "16:14,53 17:14,52 18:13,53 19:14,54 20:15,53 21:20,59"
+    }
+  }
+};
+
+// 乗車時間（分）。発車時刻が属する時間帯で決まる。until は「その時刻まで」の分。
+const RIDE_TIME = {
+  home: [
+    { until: 6 * 60 + 59, minutes: 11 },
+    { until: 17 * 60 + 0, minutes: 12 },
+    { until: 19 * 60 + 29, minutes: 13 },
+    { until: 21 * 60 + 59, minutes: 12 },
+    { until: Infinity, minutes: 10 }
+  ],
+  lab: [
+    { until: 6 * 60 + 57, minutes: 12 },
+    { until: 16 * 60 + 52, minutes: 13 },
+    { until: Infinity, minutes: 14 }
+  ]
+};
+
+const ROUTE = {
+  home: { walkTo: "桂駅西口", from: "家", param: "walkHome", defaultWalk: 8 },
+  lab:  { walkTo: "桂御陵坂", from: "研究室", param: "walkLab", defaultWalk: 13 }
+};
+
+// ---------------------------------------------------------------
+// URLパラメータ（設定値をURLに埋め込む仕組み）
+// ---------------------------------------------------------------
+function getParam(name, defaultValue) {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name) ?? defaultValue;
+}
+
+function setParam(name, value) {
+  const url = new URL(window.location.href);
+  url.searchParams.set(name, value);
+  window.history.replaceState({}, "", url);
+}
+
+// ---------------------------------------------------------------
+// 祝日の判定（祝日法のルールをそのまま実装。外部サービスを使わない）
+// ---------------------------------------------------------------
+
+// その年の春分の日・秋分の日を求める近似式（1980〜2099年で正しい）
+function equinoxDay(year, isSpring) {
+  const base = isSpring ? 20.8431 : 23.2488;
+  return Math.floor(base + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+}
+
+// 第n月曜日の日付
+function nthMonday(year, month, n) {
+  const firstDow = new Date(year, month - 1, 1).getDay();
+  return 1 + ((8 - firstDow) % 7) + (n - 1) * 7;
+}
+
+// その年の祝日を "月-日" の集合で返す（振替休日・国民の休日を含む）
+function holidaysOf(year) {
+  const days = new Set();
+  const add = (m, d) => days.add(m + "-" + d);
+
+  add(1, 1);                        // 元日
+  add(1, nthMonday(year, 1, 2));    // 成人の日
+  add(2, 11);                       // 建国記念の日
+  add(2, 23);                       // 天皇誕生日
+  add(3, equinoxDay(year, true));   // 春分の日
+  add(4, 29);                       // 昭和の日
+  add(5, 3);                        // 憲法記念日
+  add(5, 4);                        // みどりの日
+  add(5, 5);                        // こどもの日
+  add(7, nthMonday(year, 7, 3));    // 海の日
+  add(8, 11);                       // 山の日
+  add(9, nthMonday(year, 9, 3));    // 敬老の日
+  add(9, equinoxDay(year, false));  // 秋分の日
+  add(10, nthMonday(year, 10, 2));  // スポーツの日
+  add(11, 3);                       // 文化の日
+  add(11, 23);                      // 勤労感謝の日
+
+  const isHoliday = (date) => days.has((date.getMonth() + 1) + "-" + date.getDate());
+
+  // 国民の休日：前後を祝日に挟まれた平日（敬老の日と秋分の日の間で起きることがある）
+  const sandwiched = [];
+  for (const key of days) {
+    const [m, d] = key.split("-").map(Number);
+    const next = new Date(year, m - 1, d + 1);
+    const afterNext = new Date(year, m - 1, d + 2);
+    if (next.getDay() !== 0 && !isHoliday(next) && isHoliday(afterNext)) {
+      sandwiched.push(next);
+    }
+  }
+  sandwiched.forEach(date => add(date.getMonth() + 1, date.getDate()));
+
+  // 振替休日：祝日が日曜のとき、その後の最初の平日を休みにする
+  const substitutes = [];
+  for (const key of days) {
+    const [m, d] = key.split("-").map(Number);
+    if (new Date(year, m - 1, d).getDay() !== 0) continue;
+    const next = new Date(year, m - 1, d + 1);
+    while (isHoliday(next)) next.setDate(next.getDate() + 1);
+    substitutes.push(next);
+  }
+  substitutes.forEach(date => add(date.getMonth() + 1, date.getDate()));
+
+  return days;
+}
+
+// 土日祝なら true（＝土曜・休日ダイヤを使う）
+function isHolidayDiagram(date) {
+  const dow = date.getDay();
+  if (dow === 0 || dow === 6) return true;
+  return holidaysOf(date.getFullYear()).has((date.getMonth() + 1) + "-" + date.getDate());
+}
+
+// ---------------------------------------------------------------
+// 時刻表の展開と検索
+// ---------------------------------------------------------------
+
+// "8:31,39 9:2" → [{ minutes: 511, kei: "20B" }, ...]
+function parseTimetable(text, kei) {
+  return text.split(/\s+/).filter(Boolean).flatMap(block => {
+    const [hour, mins] = block.split(":");
+    return mins.split(",").map(min => ({
+      minutes: Number(hour) * 60 + Number(min),
+      kei: kei
+    }));
+  });
+}
+
+// その日・その向きの全便を時刻順に並べて返す
+function departures(direction, date) {
+  const diagram = isHolidayDiagram(date) ? "holiday" : "weekday";
+  const table = TIMETABLE[direction][diagram];
+  return Object.entries(table)
+    .flatMap(([kei, text]) => parseTimetable(text, kei))
+    .sort((a, b) => a.minutes - b.minutes);
+}
+
+function rideTime(direction, departureMinutes) {
+  return RIDE_TIME[direction].find(band => departureMinutes <= band.until).minutes;
+}
+
+function formatTime(minutes) {
+  const h = Math.floor(minutes / 60) % 24;
+  const m = minutes % 60;
+  return h + ":" + String(m).padStart(2, "0");
+}
+
+// ---------------------------------------------------------------
+// 画面の組み立て
+// ---------------------------------------------------------------
+function show(direction, now = new Date()) {
+  setParam("from", direction);
+
+  document.getElementById("btn-home").classList.toggle("active", direction === "home");
+  document.getElementById("btn-lab").classList.toggle("active", direction === "lab");
+
+  const route = ROUTE[direction];
+  const walk = Number(getParam(route.param, route.defaultWalk));
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const earliest = nowMinutes + walk;
+
+  const all = departures(direction, now);
+  const firstIndex = all.findIndex(bus => bus.minutes >= earliest);
+  const buses = firstIndex === -1 ? [] : all.slice(firstIndex, firstIndex + 3);
+
+  // 1本前（歩くと間に合わないが、急げば届くかもしれない便）
+  // 研究室からは走れば2〜3分で着くので、まだ発車していなければ常に出す。
+  // 家からはそこまで詰められないため、徒歩時間の半分以上が残っている便だけにする。
+  const previous = firstIndex > 0 ? all[firstIndex - 1] : null;
+  const rushMargin = previous ? previous.minutes - nowMinutes : 0;
+  const rushLimit = direction === "lab" ? 1 : walk / 2;
+  const rush = previous && rushMargin >= rushLimit ? previous : null;
+
+  const result = document.getElementById("result");
+
+  const header = `<p class="route">${route.from}から徒歩${walk}分 → ${route.walkTo}</p>`;
+
+  if (buses.length === 0) {
+    result.innerHTML = header +
+      `<div class="empty">今日のバスは終わりです。</div>`;
+    return;
+  }
+
+  const rushBlock = rush ? `
+    <div class="rush">
+      <span class="rush-label">急げば</span>
+      ${formatTime(rush.minutes)} 発 → ${formatTime(rush.minutes + rideTime(direction, rush.minutes))} 着
+      <span class="kei">[${rush.kei}]</span>
+      <span class="rush-note">${rushMargin}分で着ければ間に合う${direction === "lab" ? "（走れば2〜3分）" : "（徒歩" + walk + "分）"}</span>
+    </div>` : "";
+
+  const [first, ...rest] = buses;
+  const firstLeave = first.minutes - walk - nowMinutes;
+  const firstArrival = first.minutes + rideTime(direction, first.minutes);
+
+  const primary = `
+    <div class="primary">
+      <div class="leave">${firstLeave === 0 ? "今すぐ" : "あと " + firstLeave}<span class="unit">${firstLeave === 0 ? " 出発" : " 分で出発"}</span></div>
+      <div class="detail">
+        ${formatTime(first.minutes)} 発 → ${formatTime(firstArrival)} 着
+        <span class="kei">[${first.kei}]</span>
+      </div>
+    </div>`;
+
+  const others = rest.map(bus => {
+    const leave = bus.minutes - walk - nowMinutes;
+    const arrival = bus.minutes + rideTime(direction, bus.minutes);
+    return `<div>あと ${leave} 分　${formatTime(bus.minutes)} 発 → ${formatTime(arrival)} 着
+      <span class="kei">[${bus.kei}]</span></div>`;
+  }).join("");
+
+  result.innerHTML = header + rushBlock + primary + `<div class="others">${others}</div>`;
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  show(getParam("from", "home"));
+});
+</script>
+
+</body>
+</html>

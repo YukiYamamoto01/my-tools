@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>（ここに道具の名前）</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+    max-width: 480px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    line-height: 1.6;
+  }
+  h1 {
+    font-size: 1.4rem;
+  }
+  label {
+    display: block;
+    margin-top: 1rem;
+    font-weight: bold;
+  }
+  input, button {
+    font-size: 1rem;
+    padding: 0.5rem;
+    margin-top: 0.25rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  button {
+    margin-top: 1rem;
+    cursor: pointer;
+  }
+  #result {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: #f0f0f0;
+    border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+
+<h1>（ここに道具の名前）</h1>
+
+<label for="input1">（ここに入力項目名）</label>
+<input type="text" id="input1">
+
+<button onclick="run()">実行</button>
+
+<div id="result"></div>
+
+<script>
+  // 設定値をURLのパラメータから読み込む・書き込むための道具
+  // 例: getParam("input1", "") で ?input1=xxx の値を取得（なければ空文字）
+  function getParam(name, defaultValue) {
+    const params = new URLSearchParams(window.location.search);
+    return params.get(name) ?? defaultValue;
+  }
+
+  // 例: setParam("input1", "xxx") で今のURLに ?input1=xxx を反映する
+  function setParam(name, value) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(name, value);
+    window.history.replaceState({}, "", url);
+  }
+
+  // ページを開いたときに、URLに保存された値があれば入力欄に反映する
+  window.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("input1").value = getParam("input1", "");
+  });
+
+  function run() {
+    const value1 = document.getElementById("input1").value;
+
+    // 入力した値をURLに保存する（次回ブックマークから開いたときも復元される）
+    setParam("input1", value1);
+
+    // ここに道具の計算・変換ロジックを書く
+    document.getElementById("result").textContent = "結果: " + value1;
+  }
+</script>
+
+</body>
+</html>
+<!--
+  このファイルをコピーして道具を作ってください。
+  使い終わったら、上のタイトルのプレースホルダーとこのコメントは消してOKです。
+-->
